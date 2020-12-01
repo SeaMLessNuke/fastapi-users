@@ -114,19 +114,19 @@ class SQLAlchemyUserDatabase(BaseUserDatabase[UD]):
         self.users = users
         self.oauth_accounts = oauth_accounts
 
-    async def get(self, id: UUID4) -> Optional[UD]:
+    def get(self, id: UUID4) -> Optional[UD]:
         query = self.users.select().where(self.users.c.id == id)
-        user = await self.database.fetch_one(query)
-        return await self._make_user(user) if user else None
+        user = self.database.execute(query).fetchone()
+        return self._make_user(user) if user else None
 
-    async def get_by_email(self, email: str) -> Optional[UD]:
+    def get_by_email(self, email: str) -> Optional[UD]:
         query = self.users.select().where(
             func.lower(self.users.c.email) == func.lower(email)
         )
-        user = await self.database.fetch_one(query)
-        return await self._make_user(user) if user else None
+        user = self.database.execute(query).fetchone()
+        return self._make_user(user) if user else None
 
-    async def get_by_oauth_account(self, oauth: str, account_id: str) -> Optional[UD]:
+    def get_by_oauth_account(self, oauth: str, account_id: str) -> Optional[UD]:
         if self.oauth_accounts is not None:
             query = (
                 select([self.users])
@@ -134,11 +134,11 @@ class SQLAlchemyUserDatabase(BaseUserDatabase[UD]):
                 .where(self.oauth_accounts.c.oauth_name == oauth)
                 .where(self.oauth_accounts.c.account_id == account_id)
             )
-            user = await self.database.fetch_one(query)
-            return await self._make_user(user) if user else None
+            user = self.database.execute(query).fetchone()
+            return self._make_user(user) if user else None
         raise NotSetOAuthAccountTableError()
 
-    async def create(self, user: UD) -> UD:
+    def create(self, user: UD) -> UD:
         user_dict = user.dict()
         oauth_accounts_values = None
 
@@ -150,17 +150,17 @@ class SQLAlchemyUserDatabase(BaseUserDatabase[UD]):
                 oauth_accounts_values.append({"user_id": user.id, **oauth_account})
 
         query = self.users.insert()
-        await self.database.execute(query, user_dict)
+        self.database.execute(query, user_dict)
 
         if oauth_accounts_values is not None:
             if self.oauth_accounts is None:
                 raise NotSetOAuthAccountTableError()
             query = self.oauth_accounts.insert()
-            await self.database.execute_many(query, oauth_accounts_values)
-
+            self.database.execute_many(query, oauth_accounts_values)
+        self.database.commit()
         return user
 
-    async def update(self, user: UD) -> UD:
+    def update(self, user: UD) -> UD:
         user_dict = user.dict()
 
         if "oauth_accounts" in user_dict:
@@ -170,7 +170,7 @@ class SQLAlchemyUserDatabase(BaseUserDatabase[UD]):
             query = self.oauth_accounts.delete().where(
                 self.oauth_accounts.c.user_id == user.id
             )
-            await self.database.execute(query)
+            self.database.execute(query)
 
             oauth_accounts_values = []
             oauth_accounts = user_dict.pop("oauth_accounts")
@@ -178,24 +178,24 @@ class SQLAlchemyUserDatabase(BaseUserDatabase[UD]):
                 oauth_accounts_values.append({"user_id": user.id, **oauth_account})
 
             query = self.oauth_accounts.insert()
-            await self.database.execute_many(query, oauth_accounts_values)
+            self.database.execute_many(query, oauth_accounts_values)
 
         query = self.users.update().where(self.users.c.id == user.id).values(user_dict)
-        await self.database.execute(query)
+        self.database.execute(query)
         return user
 
-    async def delete(self, user: UD) -> None:
+    def delete(self, user: UD) -> None:
         query = self.users.delete().where(self.users.c.id == user.id)
-        await self.database.execute(query)
+        self.database.execute(query)
 
-    async def _make_user(self, user: Mapping) -> UD:
+    def _make_user(self, user: Mapping) -> UD:
         user_dict = {**user}
 
         if self.oauth_accounts is not None:
             query = self.oauth_accounts.select().where(
                 self.oauth_accounts.c.user_id == user["id"]
             )
-            oauth_accounts = await self.database.fetch_all(query)
+            oauth_accounts = self.database.execute(query).fetch_all()
             user_dict["oauth_accounts"] = oauth_accounts
 
         return self.user_db_model(**user_dict)

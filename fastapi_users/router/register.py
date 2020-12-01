@@ -19,9 +19,9 @@ def get_register_router(
     @router.post(
         "/register", response_model=user_model, status_code=status.HTTP_201_CREATED
     )
-    async def register(request: Request, user: user_create_model):  # type: ignore
+    def register(request: Request, user: user_create_model):  # type: ignore
         try:
-            created_user = await create_user(user, safe=True)
+            created_user = create_user(user, safe=True)
         except UserAlreadyExists:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -29,7 +29,7 @@ def get_register_router(
             )
 
         if after_register:
-            await run_handler(after_register, created_user, request)
+            run_handler(after_register, created_user, request)
 
         return created_user
 
